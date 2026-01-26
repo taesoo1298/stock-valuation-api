@@ -9,4 +9,9 @@ Route::get('/', function () {
 })->name('home');
 
 Route::get('/stocks', [StockDashboardController::class, 'index'])->name('stocks.index');
+Route::post('/stocks', [StockDashboardController::class, 'store'])->name('stocks.store');
 Route::get('/stocks/{ticker}', [StockDashboardController::class, 'show'])->name('stocks.show');
+Route::delete('/stocks/{ticker}', [StockDashboardController::class, 'destroy'])->name('stocks.destroy');
+
+Route::post('/sectors', [StockDashboardController::class, 'storeSector'])->name('sectors.store');
+Route::delete('/sectors/{sector}', [StockDashboardController::class, 'destroySector'])->name('sectors.destroy');

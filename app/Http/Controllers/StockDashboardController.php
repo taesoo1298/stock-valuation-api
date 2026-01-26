@@ -6,6 +6,8 @@ use App\Models\Sector;
 use App\Models\Stock;
 use App\Models\StockFundamental;
 use App\Services\ValuationService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -99,5 +101,61 @@ class StockDashboardController extends Controller
             'prices' => $prices,
             'valuation' => $valuation,
         ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'ticker' => 'required|string|max:10|unique:stocks,ticker',
+            'name' => 'required|string|max:255',
+            'exchange' => 'required|string|in:NASDAQ,NYSE,AMEX',
+            'sector_id' => 'required|exists:sectors,id',
+        ]);
+
+        $validated['ticker'] = strtoupper($validated['ticker']);
+        $validated['is_active'] = true;
+
+        Stock::create($validated);
+
+        return redirect()->route('stocks.index')
+            ->with('success', '종목이 추가되었습니다.');
+    }
+
+    public function destroy(string $ticker): RedirectResponse
+    {
+        $stock = Stock::where('ticker', strtoupper($ticker))->firstOrFail();
+        $stock->delete();
+
+        return redirect()->route('stocks.index')
+            ->with('success', '종목이 삭제되었습니다.');
+    }
+
+    public function storeSector(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:50|unique:sectors,code',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        $validated['code'] = strtoupper($validated['code']);
+
+        Sector::create($validated);
+
+        return redirect()->route('stocks.index')
+            ->with('success', '섹터가 추가되었습니다.');
+    }
+
+    public function destroySector(Sector $sector): RedirectResponse
+    {
+        if ($sector->stocks()->count() > 0) {
+            return redirect()->route('stocks.index')
+                ->with('error', '종목이 있는 섹터는 삭제할 수 없습니다.');
+        }
+
+        $sector->delete();
+
+        return redirect()->route('stocks.index')
+            ->with('success', '섹터가 삭제되었습니다.');
     }
 }

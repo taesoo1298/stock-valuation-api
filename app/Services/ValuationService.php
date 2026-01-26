@@ -65,10 +65,8 @@ class ValuationService
             $valuations['graham'] = $this->calculateGrahamValue($eps, $growthRate, $currentPrice);
         }
 
-        // 종합 평가
-        $fairValues = array_filter(array_column($valuations, 'fair_value'));
-        $avgFairValue = count($fairValues) > 0 ? array_sum($fairValues) / count($fairValues) : null;
-
+        // 종합 평가 (가중 평균)
+        $avgFairValue = $this->calculateWeightedFairValue($valuations);
         $overallRating = $this->calculateOverallRating($currentPrice, $avgFairValue, $fundamental);
 
         return [
@@ -235,6 +233,33 @@ class ValuationService
         }
 
         return '매우 고평가';
+    }
+
+    /**
+     * 가중 평균 적정가치 계산
+     * DCF가 가장 신뢰도 높고, PER/PBR은 시장 기반, PEG/Graham은 보조 지표
+     */
+    private function calculateWeightedFairValue(array $valuations): ?float
+    {
+        $weights = [
+            'dcf_based' => 0.30,   // DCF: 현금흐름 기반, 가장 신뢰도 높음
+            'per_based' => 0.25,   // PER: 수익 기반, 널리 사용됨
+            'pbr_based' => 0.15,   // PBR: 자산 기반
+            'peg_based' => 0.15,   // PEG: 성장률 반영
+            'graham' => 0.15,      // Graham: 보수적 가치투자 관점
+        ];
+
+        $weightedSum = 0;
+        $totalWeight = 0;
+
+        foreach ($valuations as $key => $valuation) {
+            if (isset($valuation['fair_value']) && isset($weights[$key])) {
+                $weightedSum += $valuation['fair_value'] * $weights[$key];
+                $totalWeight += $weights[$key];
+            }
+        }
+
+        return $totalWeight > 0 ? $weightedSum / $totalWeight : null;
     }
 
     private function calculateOverallRating(?float $currentPrice, ?float $avgFairValue, StockFundamental $fundamental): array

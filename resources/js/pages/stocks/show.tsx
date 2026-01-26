@@ -165,6 +165,37 @@ function getHealthColor(status: string): string {
     }
 }
 
+interface MethodDescription {
+    formula: string;
+    description: string;
+}
+
+function getMethodDescription(key: string): MethodDescription {
+    const descriptions: Record<string, MethodDescription> = {
+        per_based: {
+            formula: '적정가치 = EPS × 적정 PER',
+            description: '주당순이익(EPS)에 업종 평균 PER(15~25)을 곱하여 산출. 보수적 15배, 적정 20배, 낙관적 25배 적용.',
+        },
+        pbr_based: {
+            formula: '적정가치 = 주당순자산 × 적정 PBR',
+            description: '주당순자산(BPS)에 적정 PBR을 곱하여 산출. 기술주 기준 보수적 2배, 적정 3배, 낙관적 5배 적용.',
+        },
+        dcf_based: {
+            formula: 'DCF = Σ(FCF × (1+g)ⁿ / (1+r)ⁿ) + 터미널밸류',
+            description: '향후 10년간 잉여현금흐름(FCF)을 할인율 10%, 성장률 5%로 현재가치화. 터미널 성장률 2% 적용.',
+        },
+        peg_based: {
+            formula: '적정 PER = EPS 성장률(%) × PEG',
+            description: 'PEG 1.0을 적정으로 보고, 성장률에 비례한 PER을 적용하여 산출. PEG < 1이면 저평가.',
+        },
+        graham: {
+            formula: 'V = EPS × (8.5 + 2g) × 4.4 / Y',
+            description: '벤저민 그레이엄의 성장주 공식. 8.5는 무성장 기업 PER, g는 성장률(%), Y는 AAA채권 수익률(4.4%).',
+        },
+    };
+    return descriptions[key] || { formula: '-', description: '-' };
+}
+
 export default function StockShow({ stock, fundamental, financials, cashflows, prices, valuation }: Props) {
     const hasData = !!fundamental && !valuation.error;
 
@@ -277,24 +308,35 @@ export default function StockShow({ stock, fundamental, financials, cashflows, p
                             <div className="mb-8 rounded-lg bg-white p-6 shadow dark:bg-gray-800">
                                 <h2 className="mb-4 text-xl font-semibold text-gray-900 dark:text-white">적정가치 분석</h2>
                                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                    {Object.entries(valuation.valuations).map(([key, method]) => (
-                                        <div key={key} className="rounded-lg border p-4 dark:border-gray-700">
-                                            <div className="mb-2 flex items-center justify-between">
-                                                <span className="font-medium text-gray-900 dark:text-white">{method.method}</span>
-                                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getAssessmentColor(method.assessment)}`}>
-                                                    {method.assessment}
-                                                </span>
-                                            </div>
-                                            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                                                ${formatNumber(method.fair_value)}
-                                            </div>
-                                            {method.conservative && method.optimistic && (
-                                                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                                    보수적: ${formatNumber(method.conservative)} ~ 낙관적: ${formatNumber(method.optimistic)}
+                                    {Object.entries(valuation.valuations).map(([key, method]) => {
+                                        const methodDesc = getMethodDescription(key);
+                                        return (
+                                            <div key={key} className="rounded-lg border p-4 dark:border-gray-700">
+                                                <div className="mb-2 flex items-center justify-between">
+                                                    <span className="font-medium text-gray-900 dark:text-white">{method.method}</span>
+                                                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getAssessmentColor(method.assessment)}`}>
+                                                        {method.assessment}
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                                    ${formatNumber(method.fair_value)}
+                                                </div>
+                                                {method.conservative && method.optimistic && (
+                                                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                                        보수적: ${formatNumber(method.conservative)} ~ 낙관적: ${formatNumber(method.optimistic)}
+                                                    </div>
+                                                )}
+                                                <div className="mt-3 border-t pt-3 dark:border-gray-600">
+                                                    <div className="mb-1 font-mono text-xs text-blue-600 dark:text-blue-400">
+                                                        {methodDesc.formula}
+                                                    </div>
+                                                    <div className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                                                        {methodDesc.description}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
