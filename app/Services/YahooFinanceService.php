@@ -2,10 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\AnalystRating;
 use App\Models\ApiLog;
+use App\Models\EarningsEstimate;
+use App\Models\EarningsHistory;
 use App\Models\FinancialStatement;
+use App\Models\InsiderTransaction;
+use App\Models\InstitutionalHolder;
 use App\Models\Stock;
 use App\Models\StockFundamental;
+use App\Models\StockOption;
 use App\Models\StockPrice;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -42,8 +48,6 @@ class YahooFinanceService
 
             $data = json_decode($result->output(), true);
 
-            logger($data);
-
             if (! $data || ! ($data['success'] ?? false)) {
                 $error = $data['error'] ?? 'Unknown error';
                 $this->logRequest($stock->ticker, 'fetch_financials', null, $responseTime, $error);
@@ -64,6 +68,15 @@ class YahooFinanceService
             // Save price history
             $this->savePriceHistory($stock, $data['history'] ?? []);
 
+            // Save options data
+            $this->saveOptions($stock, $data['options'] ?? []);
+
+            // Save holdings data (institutional holders, insider transactions)
+            $this->saveHoldings($stock, $data['holdings'] ?? []);
+
+            // Save earnings data (estimates, history, analyst ratings)
+            $this->saveEarnings($stock, $data['earnings'] ?? []);
+
             return ['success' => true, 'message' => 'Sync completed successfully'];
         } catch (\Exception $e) {
             $responseTime = (int) ((microtime(true) - $startTime) * 1000);
@@ -83,7 +96,7 @@ class YahooFinanceService
             return;
         }
 
-        $today = Carbon::today();
+        $today = Carbon::today()->toDateString();
 
         StockFundamental::query()->updateOrCreate(
             [
@@ -142,7 +155,7 @@ class YahooFinanceService
             FinancialStatement::query()->updateOrCreate(
                 [
                     'stock_id' => $stock->id,
-                    'fiscal_date' => $date,
+                    'fiscal_date' => Carbon::parse($date)->toDateString(),
                     'statement_type' => 'income',
                 ],
                 [
@@ -171,7 +184,7 @@ class YahooFinanceService
             FinancialStatement::query()->updateOrCreate(
                 [
                     'stock_id' => $stock->id,
-                    'fiscal_date' => $date,
+                    'fiscal_date' => Carbon::parse($date)->toDateString(),
                     'statement_type' => 'balance',
                 ],
                 [
@@ -200,7 +213,7 @@ class YahooFinanceService
             FinancialStatement::query()->updateOrCreate(
                 [
                     'stock_id' => $stock->id,
-                    'fiscal_date' => $date,
+                    'fiscal_date' => Carbon::parse($date)->toDateString(),
                     'statement_type' => 'cashflow',
                 ],
                 [
@@ -227,7 +240,7 @@ class YahooFinanceService
             StockPrice::query()->updateOrCreate(
                 [
                     'stock_id' => $stock->id,
-                    'date' => $priceData['date'],
+                    'date' => Carbon::parse($priceData['date'])->toDateString(),
                 ],
                 [
                     'open' => $priceData['open'] ?? null,
@@ -235,6 +248,211 @@ class YahooFinanceService
                     'low' => $priceData['low'] ?? null,
                     'close' => $priceData['close'] ?? null,
                     'volume' => $priceData['volume'] ?? null,
+                ]
+            );
+        }
+    }
+
+    /**
+     * @param  array{expiration_dates?: array<string>, chains?: array<array<string, mixed>>, error?: string}  $optionsData
+     */
+    private function saveOptions(Stock $stock, array $optionsData): void
+    {
+        if (empty($optionsData['chains'])) {
+            return;
+        }
+
+        foreach ($optionsData['chains'] as $chain) {
+            $expirationDate = $chain['expiration_date'] ?? null;
+            if (! $expirationDate) {
+                continue;
+            }
+
+            // Save call options
+            foreach ($chain['calls'] ?? [] as $option) {
+                $this->saveOption($stock, 'call', $expirationDate, $option);
+            }
+
+            // Save put options
+            foreach ($chain['puts'] ?? [] as $option) {
+                $this->saveOption($stock, 'put', $expirationDate, $option);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $option
+     */
+    private function saveOption(Stock $stock, string $optionType, string $expirationDate, array $option): void
+    {
+        if (! isset($option['strike'])) {
+            return;
+        }
+
+        StockOption::query()->updateOrCreate(
+            [
+                'stock_id' => $stock->id,
+                'option_type' => $optionType,
+                'expiration_date' => Carbon::parse($expirationDate)->toDateString(),
+                'strike' => $option['strike'],
+            ],
+            [
+                'contract_symbol' => $option['contract_symbol'] ?? null,
+                'last_price' => $option['last_price'] ?? null,
+                'bid' => $option['bid'] ?? null,
+                'ask' => $option['ask'] ?? null,
+                'change' => $option['change'] ?? null,
+                'percent_change' => $option['percent_change'] ?? null,
+                'volume' => $option['volume'] ?? null,
+                'open_interest' => $option['open_interest'] ?? null,
+                'implied_volatility' => $option['implied_volatility'] ?? null,
+                'in_the_money' => $option['in_the_money'] ?? null,
+            ]
+        );
+    }
+
+    /**
+     * @param  array{major_holders?: array<string, mixed>, institutional_holders?: array<array<string, mixed>>, insider_transactions?: array<array<string, mixed>>, insider_holders?: array<array<string, mixed>>, error?: string}  $holdingsData
+     */
+    private function saveHoldings(Stock $stock, array $holdingsData): void
+    {
+        // Save institutional holders
+        foreach ($holdingsData['institutional_holders'] ?? [] as $holder) {
+            if (empty($holder['holder'])) {
+                continue;
+            }
+
+            $dateReported = isset($holder['date_reported']) ? Carbon::parse($holder['date_reported'])->toDateString() : null;
+
+            InstitutionalHolder::query()->updateOrCreate(
+                [
+                    'stock_id' => $stock->id,
+                    'holder_name' => $holder['holder'],
+                    'date_reported' => $dateReported,
+                ],
+                [
+                    'shares' => $holder['shares'] ?? null,
+                    'percent_out' => $holder['percent_out'] ?? null,
+                    'value' => $holder['value'] ?? null,
+                ]
+            );
+        }
+
+        // Save insider transactions
+        foreach ($holdingsData['insider_transactions'] ?? [] as $transaction) {
+            if (empty($transaction['insider'])) {
+                continue;
+            }
+
+            $transactionDate = isset($transaction['start_date']) ? Carbon::parse($transaction['start_date'])->toDateString() : null;
+
+            InsiderTransaction::query()->updateOrCreate(
+                [
+                    'stock_id' => $stock->id,
+                    'insider_name' => $transaction['insider'],
+                    'transaction_date' => $transactionDate,
+                    'shares' => $transaction['shares'] ?? null,
+                ],
+                [
+                    'position' => $transaction['position'] ?? null,
+                    'transaction_type' => $transaction['transaction_type'] ?? null,
+                    'value' => $transaction['value'] ?? null,
+                    'url' => $transaction['url'] ?? null,
+                ]
+            );
+        }
+    }
+
+    /**
+     * @param  array{earnings_dates?: array<array<string, mixed>>, earnings_estimate?: array<array<string, mixed>>, revenue_estimate?: array<array<string, mixed>>, calendar?: array<string, mixed>, analyst_price_targets?: array<string, mixed>, recommendations?: array<array<string, mixed>>, error?: string}  $earningsData
+     */
+    private function saveEarnings(Stock $stock, array $earningsData): void
+    {
+        // Save EPS estimates
+        foreach ($earningsData['earnings_estimate'] ?? [] as $estimate) {
+            if (empty($estimate['period'])) {
+                continue;
+            }
+
+            EarningsEstimate::query()->updateOrCreate(
+                [
+                    'stock_id' => $stock->id,
+                    'estimate_type' => 'eps',
+                    'period' => $estimate['period'],
+                ],
+                [
+                    'estimate_avg' => $estimate['avg'] ?? null,
+                    'estimate_low' => $estimate['low'] ?? null,
+                    'estimate_high' => $estimate['high'] ?? null,
+                    'year_ago_value' => $estimate['year_ago_eps'] ?? null,
+                    'number_of_analysts' => $estimate['number_of_analysts'] ?? null,
+                    'growth' => $estimate['growth'] ?? null,
+                ]
+            );
+        }
+
+        // Save revenue estimates
+        foreach ($earningsData['revenue_estimate'] ?? [] as $estimate) {
+            if (empty($estimate['period'])) {
+                continue;
+            }
+
+            EarningsEstimate::query()->updateOrCreate(
+                [
+                    'stock_id' => $stock->id,
+                    'estimate_type' => 'revenue',
+                    'period' => $estimate['period'],
+                ],
+                [
+                    'estimate_avg' => $estimate['avg'] ?? null,
+                    'estimate_low' => $estimate['low'] ?? null,
+                    'estimate_high' => $estimate['high'] ?? null,
+                    'year_ago_value' => $estimate['year_ago_revenue'] ?? null,
+                    'number_of_analysts' => $estimate['number_of_analysts'] ?? null,
+                    'growth' => $estimate['growth'] ?? null,
+                ]
+            );
+        }
+
+        // Save earnings history
+        foreach ($earningsData['earnings_dates'] ?? [] as $history) {
+            if (empty($history['earnings_date'])) {
+                continue;
+            }
+
+            EarningsHistory::query()->updateOrCreate(
+                [
+                    'stock_id' => $stock->id,
+                    'earnings_date' => Carbon::parse($history['earnings_date'])->toDateTimeString(),
+                ],
+                [
+                    'eps_estimate' => $history['eps_estimate'] ?? null,
+                    'reported_eps' => $history['reported_eps'] ?? null,
+                    'surprise_percent' => $history['surprise_percent'] ?? null,
+                ]
+            );
+        }
+
+        // Save analyst rating
+        $calendar = $earningsData['calendar'] ?? [];
+        $targets = $earningsData['analyst_price_targets'] ?? [];
+        $recommendations = $earningsData['recommendations'][0] ?? [];
+
+        if (! empty($targets) || ! empty($recommendations) || ! empty($calendar)) {
+            AnalystRating::query()->updateOrCreate(
+                ['stock_id' => $stock->id],
+                [
+                    'target_high' => $targets['high'] ?? null,
+                    'target_low' => $targets['low'] ?? null,
+                    'target_mean' => $targets['mean'] ?? null,
+                    'target_median' => $targets['median'] ?? null,
+                    'strong_buy' => $recommendations['strong_buy'] ?? 0,
+                    'buy' => $recommendations['buy'] ?? 0,
+                    'hold' => $recommendations['hold'] ?? 0,
+                    'sell' => $recommendations['sell'] ?? 0,
+                    'strong_sell' => $recommendations['strong_sell'] ?? 0,
+                    'next_earnings_date' => isset($calendar['earnings_date']) ? Carbon::parse($calendar['earnings_date'])->toDateString() : null,
+                    'next_eps_estimate' => $calendar['earnings_avg'] ?? null,
                 ]
             );
         }

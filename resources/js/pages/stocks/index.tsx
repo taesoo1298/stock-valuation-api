@@ -65,7 +65,7 @@ function formatPercent(value: number | null): string {
 export default function StocksIndex({ sectors, stocks, summary }: Props) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [showSectorModal, setShowSectorModal] = useState(false);
-    
+
     const stockForm = useForm({
         ticker: '',
         name: '',
@@ -114,7 +114,7 @@ export default function StocksIndex({ sectors, stocks, summary }: Props) {
     return (
         <>
             <Head title="Stock Dashboard" />
-            
+
             {/* Add Stock Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

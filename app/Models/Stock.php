@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Stock extends Model
 {
@@ -68,5 +69,61 @@ class Stock extends Model
     public function fundamentals(): HasMany
     {
         return $this->hasMany(StockFundamental::class);
+    }
+
+    /**
+     * @return HasMany<StockOption, $this>
+     */
+    public function options(): HasMany
+    {
+        return $this->hasMany(StockOption::class);
+    }
+
+    /**
+     * @return HasMany<InstitutionalHolder, $this>
+     */
+    public function institutionalHolders(): HasMany
+    {
+        return $this->hasMany(InstitutionalHolder::class);
+    }
+
+    /**
+     * @return HasMany<InsiderTransaction, $this>
+     */
+    public function insiderTransactions(): HasMany
+    {
+        return $this->hasMany(InsiderTransaction::class);
+    }
+
+    /**
+     * @return HasMany<EarningsEstimate, $this>
+     */
+    public function earningsEstimates(): HasMany
+    {
+        return $this->hasMany(EarningsEstimate::class);
+    }
+
+    /**
+     * @return HasMany<EarningsHistory, $this>
+     */
+    public function earningsHistories(): HasMany
+    {
+        return $this->hasMany(EarningsHistory::class);
+    }
+
+    /**
+     * @return HasOne<AnalystRating, $this>
+     */
+    public function analystRating(): HasOne
+    {
+        return $this->hasOne(AnalystRating::class);
+    }
+
+    /**
+     * @return HasOne<StockStoryAnalysis, $this>
+     */
+    public function stockStoryAnalysis(): HasOne
+    {
+        return $this->hasOne(StockStoryAnalysis::class);
     }
 }

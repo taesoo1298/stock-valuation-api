@@ -11,6 +11,7 @@ Route::get('/', function () {
 Route::get('/stocks', [StockDashboardController::class, 'index'])->name('stocks.index');
 Route::post('/stocks', [StockDashboardController::class, 'store'])->name('stocks.store');
 Route::get('/stocks/{ticker}', [StockDashboardController::class, 'show'])->name('stocks.show');
+Route::get('/stocks/{ticker}/story', [StockDashboardController::class, 'story'])->name('stocks.story');
 Route::delete('/stocks/{ticker}', [StockDashboardController::class, 'destroy'])->name('stocks.destroy');
 
 Route::post('/sectors', [StockDashboardController::class, 'storeSector'])->name('sectors.store');

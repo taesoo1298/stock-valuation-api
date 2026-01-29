@@ -55,6 +55,75 @@ interface Price {
     volume: number | null;
 }
 
+interface OptionSummary {
+    option_type: 'call' | 'put';
+    expiration_date: string;
+    count: number;
+    total_volume: number | null;
+    total_open_interest: number | null;
+}
+
+interface InstitutionalHolder {
+    holder_name: string;
+    shares: number | null;
+    date_reported: string | null;
+    percent_out: number | null;
+    value: number | null;
+}
+
+interface InsiderTransaction {
+    insider_name: string;
+    position: string | null;
+    transaction_type: string | null;
+    transaction_date: string | null;
+    shares: number | null;
+    value: number | null;
+}
+
+interface EarningsEstimate {
+    estimate_type: 'eps' | 'revenue';
+    period: string;
+    estimate_avg: number | null;
+    estimate_low: number | null;
+    estimate_high: number | null;
+    year_ago_value: number | null;
+    number_of_analysts: number | null;
+    growth: number | null;
+}
+
+interface EarningsHistory {
+    earnings_date: string;
+    eps_estimate: number | null;
+    reported_eps: number | null;
+    surprise_percent: number | null;
+}
+
+interface AnalystRating {
+    target_high: number | null;
+    target_low: number | null;
+    target_mean: number | null;
+    target_median: number | null;
+    strong_buy: number;
+    buy: number;
+    hold: number;
+    sell: number;
+    strong_sell: number;
+    next_earnings_date: string | null;
+    next_eps_estimate: number | null;
+    total_recommendations: number;
+    consensus: string;
+}
+
+interface SectorBenchmark {
+    etf_ticker: string;
+    sector_name: string;
+    sector_name_kr: string;
+    trailing_pe: number | null;
+    forward_pe: number | null;
+    pb_ratio: number | null;
+    dividend_yield: number | null;
+}
+
 interface ValuationMethod {
     method: string;
     fair_value: number;
@@ -97,6 +166,13 @@ interface Props {
     financials: Financial[];
     cashflows: Cashflow[];
     prices: Price[];
+    options: OptionSummary[];
+    institutionalHolders: InstitutionalHolder[];
+    insiderTransactions: InsiderTransaction[];
+    earningsEstimates: EarningsEstimate[];
+    earningsHistories: EarningsHistory[];
+    analystRating: AnalystRating | null;
+    sectorBenchmark: SectorBenchmark | null;
     valuation: Valuation;
 }
 
@@ -196,7 +272,7 @@ function getMethodDescription(key: string): MethodDescription {
     return descriptions[key] || { formula: '-', description: '-' };
 }
 
-export default function StockShow({ stock, fundamental, financials, cashflows, prices, valuation }: Props) {
+export default function StockShow({ stock, fundamental, financials, cashflows, prices, options, institutionalHolders, insiderTransactions, earningsEstimates, earningsHistories, analystRating, sectorBenchmark, valuation }: Props) {
     const hasData = !!fundamental && !valuation.error;
 
     return (
@@ -223,6 +299,12 @@ export default function StockShow({ stock, fundamental, financials, cashflows, p
                                 <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                                     {stock.exchange}
                                 </span>
+                                <Link
+                                    href={`/stocks/${stock.ticker}/story`}
+                                    className="rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800 hover:bg-purple-200 dark:bg-purple-900 dark:text-purple-200 dark:hover:bg-purple-800"
+                                >
+                                    StockStory
+                                </Link>
                             </div>
                             <p className="mt-1 text-xl text-gray-600 dark:text-gray-400">{stock.name}</p>
                             <p className="mt-1 text-sm text-gray-500">섹터: {stock.sector?.name}</p>
@@ -340,6 +422,126 @@ export default function StockShow({ stock, fundamental, financials, cashflows, p
                                 </div>
                             </div>
 
+                            {/* Sector Benchmark Comparison */}
+                            {sectorBenchmark && fundamental?.pe_ratio && (
+                                <div className="mb-8 rounded-lg bg-white p-6 shadow dark:bg-gray-800">
+                                    <h2 className="mb-4 text-xl font-semibold text-gray-900 dark:text-white">
+                                        섹터 평균 대비 밸류에이션
+                                        <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                                            ({sectorBenchmark.sector_name_kr} - {sectorBenchmark.etf_ticker})
+                                        </span>
+                                    </h2>
+                                    <div className="grid gap-6 md:grid-cols-2">
+                                        {/* PER Comparison */}
+                                        <div className="rounded-lg border p-4 dark:border-gray-700">
+                                            <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">PER 비교</h4>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-gray-500 dark:text-gray-400">현재 PER</span>
+                                                <span className="text-xl font-bold text-gray-900 dark:text-white">
+                                                    {formatNumber(fundamental.pe_ratio)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="text-gray-500 dark:text-gray-400">섹터 평균 PER</span>
+                                                <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                                                    {formatNumber(sectorBenchmark.trailing_pe)}
+                                                </span>
+                                            </div>
+                                            {/* Progress Bar */}
+                                            <div className="relative h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                <div
+                                                    className="absolute left-1/2 w-0.5 h-full bg-blue-500 z-10"
+                                                    title="섹터 평균"
+                                                />
+                                                <div
+                                                    className={`h-full ${fundamental.pe_ratio <= (sectorBenchmark.trailing_pe ?? 0) ? 'bg-green-500' : 'bg-red-500'}`}
+                                                    style={{
+                                                        width: `${Math.min((fundamental.pe_ratio / ((sectorBenchmark.trailing_pe ?? 1) * 2)) * 100, 100)}%`
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="mt-3 text-center">
+                                                {(() => {
+                                                    const diff = ((fundamental.pe_ratio - (sectorBenchmark.trailing_pe ?? 0)) / (sectorBenchmark.trailing_pe ?? 1)) * 100;
+                                                    const isUndervalued = diff < -10;
+                                                    const isOvervalued = diff > 10;
+                                                    return (
+                                                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                                                            isUndervalued
+                                                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                                : isOvervalued
+                                                                    ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                                                    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                                        }`}>
+                                                            {isUndervalued && '저평가'}
+                                                            {isOvervalued && '고평가'}
+                                                            {!isUndervalued && !isOvervalued && '적정'}
+                                                            <span className="ml-1">
+                                                                ({diff >= 0 ? '+' : ''}{formatNumber(diff, 1)}%)
+                                                            </span>
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                        {/* PBR Comparison */}
+                                        {fundamental.pb_ratio && sectorBenchmark.pb_ratio && sectorBenchmark.pb_ratio > 0 && sectorBenchmark.pb_ratio < 50 && (
+                                            <div className="rounded-lg border p-4 dark:border-gray-700">
+                                                <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">PBR 비교</h4>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-gray-500 dark:text-gray-400">현재 PBR</span>
+                                                    <span className="text-xl font-bold text-gray-900 dark:text-white">
+                                                        {formatNumber(fundamental.pb_ratio)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-gray-500 dark:text-gray-400">섹터 평균 PBR</span>
+                                                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                                                        {formatNumber(sectorBenchmark.pb_ratio)}
+                                                    </span>
+                                                </div>
+                                                {/* Progress Bar */}
+                                                <div className="relative h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="absolute left-1/2 w-0.5 h-full bg-blue-500 z-10"
+                                                        title="섹터 평균"
+                                                    />
+                                                    <div
+                                                        className={`h-full ${fundamental.pb_ratio <= sectorBenchmark.pb_ratio ? 'bg-green-500' : 'bg-red-500'}`}
+                                                        style={{
+                                                            width: `${Math.min((fundamental.pb_ratio / (sectorBenchmark.pb_ratio * 2)) * 100, 100)}%`
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="mt-3 text-center">
+                                                    {(() => {
+                                                        const diff = ((fundamental.pb_ratio - sectorBenchmark.pb_ratio) / sectorBenchmark.pb_ratio) * 100;
+                                                        const isUndervalued = diff < -10;
+                                                        const isOvervalued = diff > 10;
+                                                        return (
+                                                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                                                                isUndervalued
+                                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                                    : isOvervalued
+                                                                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                                                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                                            }`}>
+                                                                {isUndervalued && '저평가'}
+                                                                {isOvervalued && '고평가'}
+                                                                {!isUndervalued && !isOvervalued && '적정'}
+                                                                <span className="ml-1">
+                                                                    ({diff >= 0 ? '+' : ''}{formatNumber(diff, 1)}%)
+                                                                </span>
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Key Metrics Grid */}
                             <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                                 {/* Valuation Metrics */}
@@ -449,6 +651,147 @@ export default function StockShow({ stock, fundamental, financials, cashflows, p
                                 </div>
                             </div>
 
+                            {/* Price Chart */}
+                            {prices.length > 0 && (
+                                <div className="mb-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">주가 추이 (1년)</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        {/* Simple Line Chart */}
+                                        <div className="relative h-64 w-full">
+                                            {(() => {
+                                                const sortedPrices = [...prices].reverse();
+                                                const validPrices = sortedPrices.filter(p => p.close !== null);
+                                                if (validPrices.length < 2) return null;
+
+                                                const closes = validPrices.map(p => p.close as number);
+                                                const minPrice = Math.min(...closes);
+                                                const maxPrice = Math.max(...closes);
+                                                const priceRange = maxPrice - minPrice || 1;
+
+                                                const width = 100;
+                                                const height = 100;
+                                                const padding = 5;
+
+                                                const points = validPrices.map((p, i) => {
+                                                    const x = padding + (i / (validPrices.length - 1)) * (width - 2 * padding);
+                                                    const y = height - padding - ((p.close as number - minPrice) / priceRange) * (height - 2 * padding);
+                                                    return `${x},${y}`;
+                                                }).join(' ');
+
+                                                const firstPrice = closes[0];
+                                                const lastPrice = closes[closes.length - 1];
+                                                const priceChange = ((lastPrice - firstPrice) / firstPrice) * 100;
+                                                const isPositive = priceChange >= 0;
+
+                                                // 선형 회귀 계산 (5년 추세선)
+                                                const n = closes.length;
+                                                const sumX = (n * (n - 1)) / 2;
+                                                const sumY = closes.reduce((a, b) => a + b, 0);
+                                                const sumXY = closes.reduce((sum, y, x) => sum + x * y, 0);
+                                                const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+                                                const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+                                                const intercept = (sumY - slope * sumX) / n;
+
+                                                // 추세선 시작/끝 좌표
+                                                const trendStart = intercept;
+                                                const trendEnd = slope * (n - 1) + intercept;
+                                                const trendStartY = height - padding - ((trendStart - minPrice) / priceRange) * (height - 2 * padding);
+                                                const trendEndY = height - padding - ((trendEnd - minPrice) / priceRange) * (height - 2 * padding);
+                                                const trendIsPositive = slope >= 0;
+
+                                                // 1년 수익률 계산
+                                                const annualReturn = priceChange;
+
+                                                return (
+                                                    <>
+                                                        <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
+                                                            <defs>
+                                                                <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                                    <stop offset="0%" stopColor={isPositive ? '#10B981' : '#EF4444'} stopOpacity="0.3" />
+                                                                    <stop offset="100%" stopColor={isPositive ? '#10B981' : '#EF4444'} stopOpacity="0" />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            {/* Area fill */}
+                                                            <polygon
+                                                                points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
+                                                                fill="url(#priceGradient)"
+                                                            />
+                                                            {/* Line */}
+                                                            <polyline
+                                                                points={points}
+                                                                fill="none"
+                                                                stroke={isPositive ? '#10B981' : '#EF4444'}
+                                                                strokeWidth="0.5"
+                                                            />
+                                                            {/* 5년 추세선 (빗각) */}
+                                                            <line
+                                                                x1={padding}
+                                                                y1={trendStartY}
+                                                                x2={width - padding}
+                                                                y2={trendEndY}
+                                                                stroke={trendIsPositive ? '#3B82F6' : '#F59E0B'}
+                                                                strokeWidth="0.4"
+                                                                strokeDasharray="2,1"
+                                                            />
+                                                        </svg>
+                                                        <div className="absolute left-0 top-0 flex flex-col text-xs text-gray-500 dark:text-gray-400">
+                                                            <span>${formatNumber(maxPrice)}</span>
+                                                        </div>
+                                                        <div className="absolute bottom-0 left-0 flex flex-col text-xs text-gray-500 dark:text-gray-400">
+                                                            <span>${formatNumber(minPrice)}</span>
+                                                        </div>
+                                                        <div className="absolute right-0 top-0 text-right">
+                                                            <div>
+                                                                <span className={`text-lg font-bold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    {isPositive ? '+' : ''}{formatNumber(priceChange)}%
+                                                                </span>
+                                                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                    (1년)
+                                                                </span>
+                                                            </div>
+                                                            <div className="mt-1">
+                                                                <span className={`text-sm font-semibold ${trendIsPositive ? 'text-blue-600' : 'text-amber-600'}`}>
+                                                                    추세: {trendIsPositive ? '▲' : '▼'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                        {/* Price Stats */}
+                                        <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4 dark:border-gray-700 md:grid-cols-4">
+                                            <div>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">최근 종가</p>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    ${formatNumber(prices[0]?.close)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">52주 최고</p>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    ${formatNumber(Math.max(...prices.slice(0, 12).map(p => p.close ?? 0)))}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">52주 최저</p>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    ${formatNumber(Math.min(...prices.slice(0, 12).filter(p => p.close).map(p => p.close as number)))}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">평균 거래량</p>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    {formatMarketCap(prices.reduce((sum, p) => sum + (p.volume ?? 0), 0) / prices.length)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Financial History Table */}
                             {financials.length > 0 && (
                                 <div className="mb-8 rounded-lg bg-white shadow dark:bg-gray-800">
@@ -522,6 +865,372 @@ export default function StockShow({ stock, fundamental, financials, cashflows, p
                                                         </td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-right text-green-600 dark:text-green-400">
                                                             {formatMarketCap(cf.free_cashflow)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Analyst Rating */}
+                            {analystRating && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">애널리스트 평가</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        <div className="grid gap-6 md:grid-cols-2">
+                                            {/* Consensus & Target Price */}
+                                            <div>
+                                                <div className="mb-4 text-center">
+                                                    <span className={`inline-block rounded-full px-4 py-2 text-lg font-bold ${
+                                                        analystRating.consensus === '강력매수' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                        analystRating.consensus === '매수' ? 'bg-green-50 text-green-700 dark:bg-green-900/50 dark:text-green-300' :
+                                                        analystRating.consensus === '매도' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                                        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                                    }`}>
+                                                        {analystRating.consensus}
+                                                    </span>
+                                                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                                        {analystRating.total_recommendations}명의 애널리스트
+                                                    </p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4 text-center">
+                                                    <div>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">목표가 (평균)</p>
+                                                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                                                            ${formatNumber(analystRating.target_mean)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">목표가 (중간값)</p>
+                                                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                                                            ${formatNumber(analystRating.target_median)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">최고 목표가</p>
+                                                        <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                                            ${formatNumber(analystRating.target_high)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">최저 목표가</p>
+                                                        <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                                                            ${formatNumber(analystRating.target_low)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* Recommendation Distribution */}
+                                            <div>
+                                                <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">추천 분포</h4>
+                                                <div className="space-y-2">
+                                                    {[
+                                                        { label: '강력 매수', value: analystRating.strong_buy, color: 'bg-green-600' },
+                                                        { label: '매수', value: analystRating.buy, color: 'bg-green-400' },
+                                                        { label: '보유', value: analystRating.hold, color: 'bg-yellow-400' },
+                                                        { label: '매도', value: analystRating.sell, color: 'bg-red-400' },
+                                                        { label: '강력 매도', value: analystRating.strong_sell, color: 'bg-red-600' },
+                                                    ].map(item => (
+                                                        <div key={item.label} className="flex items-center gap-3">
+                                                            <span className="w-16 text-xs text-gray-600 dark:text-gray-400">{item.label}</span>
+                                                            <div className="flex-1 h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full ${item.color}`}
+                                                                    style={{ width: `${analystRating.total_recommendations ? (item.value / analystRating.total_recommendations) * 100 : 0}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="w-6 text-right text-xs font-medium text-gray-900 dark:text-white">{item.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {analystRating.next_earnings_date && (
+                                                    <div className="mt-4 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+                                                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                                                            <span className="font-medium">다음 실적 발표:</span> {analystRating.next_earnings_date.split('T')[0]}
+                                                            {analystRating.next_eps_estimate && (
+                                                                <span className="ml-2">(예상 EPS: ${formatNumber(analystRating.next_eps_estimate, 4)})</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Earnings Estimates */}
+                            {earningsEstimates.length > 0 && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">실적 예측</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        <div className="grid gap-6 md:grid-cols-2">
+                                            {/* EPS Estimates */}
+                                            <div>
+                                                <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">EPS 예측</h4>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-50 dark:bg-gray-700">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">기간</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">예상</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">전년</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">성장률</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                            {earningsEstimates.filter(e => e.estimate_type === 'eps').map((est) => (
+                                                                <tr key={est.period}>
+                                                                    <td className="px-3 py-2 text-gray-900 dark:text-white">{est.period}</td>
+                                                                    <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                                                                        ${formatNumber(est.estimate_avg, 2)}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">
+                                                                        {est.year_ago_value ? `$${formatNumber(est.year_ago_value, 2)}` : '-'}
+                                                                    </td>
+                                                                    <td className={`px-3 py-2 text-right ${
+                                                                        est.growth && est.growth > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                                                    }`}>
+                                                                        {est.growth ? `${est.growth > 0 ? '+' : ''}${formatNumber(est.growth * 100, 1)}%` : '-'}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            {/* Revenue Estimates */}
+                                            <div>
+                                                <h4 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">매출 예측</h4>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-50 dark:bg-gray-700">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300">기간</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">예상</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">전년</th>
+                                                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300">성장률</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                            {earningsEstimates.filter(e => e.estimate_type === 'revenue').map((est) => (
+                                                                <tr key={est.period}>
+                                                                    <td className="px-3 py-2 text-gray-900 dark:text-white">{est.period}</td>
+                                                                    <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                                                                        {formatMarketCap(est.estimate_avg)}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">
+                                                                        {formatMarketCap(est.year_ago_value)}
+                                                                    </td>
+                                                                    <td className={`px-3 py-2 text-right ${
+                                                                        est.growth && est.growth > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                                                    }`}>
+                                                                        {est.growth ? `${est.growth > 0 ? '+' : ''}${formatNumber(est.growth * 100, 1)}%` : '-'}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Earnings History */}
+                            {earningsHistories.length > 0 && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">실적 발표 히스토리</h2>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-300">발표일</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">예상 EPS</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">실제 EPS</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">서프라이즈</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {earningsHistories.map((history, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-gray-900 dark:text-white">
+                                                            {history.earnings_date.split('T')[0]}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-500 dark:text-gray-400">
+                                                            {history.eps_estimate ? `$${formatNumber(history.eps_estimate, 2)}` : '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right font-medium text-gray-900 dark:text-white">
+                                                            {history.reported_eps ? `$${formatNumber(history.reported_eps, 2)}` : '-'}
+                                                        </td>
+                                                        <td className={`whitespace-nowrap px-6 py-4 text-right font-medium ${
+                                                            history.surprise_percent && history.surprise_percent > 0
+                                                                ? 'text-green-600 dark:text-green-400'
+                                                                : history.surprise_percent && history.surprise_percent < 0
+                                                                    ? 'text-red-600 dark:text-red-400'
+                                                                    : 'text-gray-600 dark:text-gray-400'
+                                                        }`}>
+                                                            {history.surprise_percent !== null ? (
+                                                                <>
+                                                                    {history.surprise_percent > 0 ? '+' : ''}{formatNumber(history.surprise_percent, 2)}%
+                                                                    {history.surprise_percent > 0 && ' (Beat)'}
+                                                                    {history.surprise_percent < 0 && ' (Miss)'}
+                                                                </>
+                                                            ) : '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Options Summary */}
+                            {options.length > 0 && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">옵션 현황</h2>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-300">만기일</th>
+                                                    <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500 dark:text-gray-300">유형</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">계약 수</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">총 거래량</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">미결제약정</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {options.map((opt, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-gray-900 dark:text-white">
+                                                            {opt.expiration_date.split('T')[0]}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-center">
+                                                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                                                opt.option_type === 'call'
+                                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                                            }`}>
+                                                                {opt.option_type === 'call' ? '콜' : '풋'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {opt.count.toLocaleString()}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {opt.total_volume?.toLocaleString() ?? '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {opt.total_open_interest?.toLocaleString() ?? '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Institutional Holders */}
+                            {institutionalHolders.length > 0 && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">기관투자자 보유현황</h2>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-300">기관명</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">보유주식</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">보유비율</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">보유가치</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">보고일</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {institutionalHolders.map((holder, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="whitespace-nowrap px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                                            {holder.holder_name}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {holder.shares?.toLocaleString() ?? '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {holder.percent_out ? `${(holder.percent_out * 100).toFixed(2)}%` : '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {formatMarketCap(holder.value)}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-500 dark:text-gray-400">
+                                                            {holder.date_reported?.split('T')[0] ?? '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Insider Transactions */}
+                            {insiderTransactions.length > 0 && (
+                                <div className="mt-8 rounded-lg bg-white shadow dark:bg-gray-800">
+                                    <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                                        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">내부자 거래</h2>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                                <tr>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-300">내부자</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-300">직위</th>
+                                                    <th className="px-6 py-3 text-center text-xs font-medium uppercase text-gray-500 dark:text-gray-300">거래유형</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">주식 수</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">거래금액</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-300">거래일</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {insiderTransactions.map((tx, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="whitespace-nowrap px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                                            {tx.insider_name}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                                                            {tx.position ?? '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-center">
+                                                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                                                tx.shares && tx.shares > 0
+                                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                                            }`}>
+                                                                {tx.shares && tx.shares > 0 ? '매수' : '매도'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {tx.shares ? Math.abs(tx.shares).toLocaleString() : '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900 dark:text-white">
+                                                            {tx.value ? `$${tx.value.toLocaleString()}` : '-'}
+                                                        </td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-right text-gray-500 dark:text-gray-400">
+                                                            {tx.transaction_date?.split('T')[0] ?? '-'}
                                                         </td>
                                                     </tr>
                                                 ))}

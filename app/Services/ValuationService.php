@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SectorBenchmark;
 use App\Models\Stock;
 use App\Models\StockFundamental;
 
@@ -25,6 +26,9 @@ class ValuationService
             return ['error' => 'No fundamental data available'];
         }
 
+        // 섹터 벤치마크 PER 조회
+        $sectorBenchmark = $this->getSectorBenchmark($stock);
+
         $currentPrice = $fundamental->current_price;
         $eps = $fundamental->eps;
         $bookValue = $fundamental->book_value;
@@ -35,14 +39,14 @@ class ValuationService
 
         $valuations = [];
 
-        // 1. PER 기반 적정가치 (업종 평균 PER 15~25 기준)
+        // 1. PER 기반 적정가치 (섹터 평균 PER 기준)
         if ($eps && $eps > 0) {
-            $valuations['per_based'] = $this->calculatePerBasedValue($eps, $currentPrice);
+            $valuations['per_based'] = $this->calculatePerBasedValue($eps, $currentPrice, $sectorBenchmark);
         }
 
         // 2. PBR 기반 적정가치
         if ($bookValue && $bookValue > 0) {
-            $valuations['pbr_based'] = $this->calculatePbrBasedValue($bookValue, $currentPrice);
+            $valuations['pbr_based'] = $this->calculatePbrBasedValue($bookValue, $currentPrice, $sectorBenchmark);
         }
 
         // 3. DCF (Discounted Cash Flow) 간이 계산
@@ -84,24 +88,51 @@ class ValuationService
     }
 
     /**
+     * 섹터 벤치마크 조회
+     */
+    private function getSectorBenchmark(Stock $stock): ?SectorBenchmark
+    {
+        // 1. 섹터에 연결된 벤치마크 ETF가 있으면 사용
+        $sector = $stock->sector;
+        if ($sector && $sector->benchmark_etf) {
+            $benchmark = SectorBenchmark::query()
+                ->where('etf_ticker', $sector->benchmark_etf)
+                ->first();
+            if ($benchmark) {
+                return $benchmark;
+            }
+        }
+
+        // 2. 기본값으로 SMH (반도체) 또는 XLK (기술) 사용
+        return SectorBenchmark::query()
+            ->where('etf_ticker', 'SMH')
+            ->first();
+    }
+
+    /**
      * PER 기반 적정가치 계산
      */
-    private function calculatePerBasedValue(float $eps, ?float $currentPrice): array
+    private function calculatePerBasedValue(float $eps, ?float $currentPrice, ?SectorBenchmark $benchmark): array
     {
-        // 업종별 평균 PER 범위 (테크: 20-30, 일반: 15-20)
-        $conservativePer = 15;
-        $fairPer = 20;
-        $optimisticPer = 25;
+        // 섹터 벤치마크 PER 사용, 없으면 기본값
+        $sectorPer = $benchmark?->trailing_pe ?? 20;
+        $sectorName = $benchmark?->sector_name_kr ?? '기본';
+
+        // 섹터 PER 기준으로 보수적/적정/낙관적 범위 설정
+        $conservativePer = $sectorPer * 0.7;  // 섹터 평균의 70%
+        $fairPer = $sectorPer;                 // 섹터 평균
+        $optimisticPer = $sectorPer * 1.3;     // 섹터 평균의 130%
 
         $conservativeValue = $eps * $conservativePer;
         $fairValue = $eps * $fairPer;
         $optimisticValue = $eps * $optimisticPer;
 
         return [
-            'method' => 'PER 기반',
+            'method' => "PER 기반 ({$sectorName})",
             'conservative' => round($conservativeValue, 2),
             'fair_value' => round($fairValue, 2),
             'optimistic' => round($optimisticValue, 2),
+            'sector_per' => round($sectorPer, 2),
             'current_per' => $currentPrice && $eps > 0 ? round($currentPrice / $eps, 2) : null,
             'assessment' => $this->assessValue($currentPrice, $fairValue),
         ];
@@ -110,22 +141,31 @@ class ValuationService
     /**
      * PBR 기반 적정가치 계산
      */
-    private function calculatePbrBasedValue(float $bookValue, ?float $currentPrice): array
+    private function calculatePbrBasedValue(float $bookValue, ?float $currentPrice, ?SectorBenchmark $benchmark): array
     {
-        // 기술주 PBR 기준 (2-5 적정)
-        $conservativePbr = 2;
-        $fairPbr = 3;
-        $optimisticPbr = 5;
+        // 섹터 벤치마크 PBR 사용, 없으면 기본값 3
+        $sectorPbr = $benchmark?->pb_ratio ?? 3;
+        $sectorName = $benchmark?->sector_name_kr ?? '기본';
+
+        // PBR이 비정상적으로 높거나 0인 경우 기본값 사용
+        if ($sectorPbr <= 0 || $sectorPbr > 50) {
+            $sectorPbr = 3;
+        }
+
+        $conservativePbr = $sectorPbr * 0.7;
+        $fairPbr = $sectorPbr;
+        $optimisticPbr = $sectorPbr * 1.3;
 
         $conservativeValue = $bookValue * $conservativePbr;
         $fairValue = $bookValue * $fairPbr;
         $optimisticValue = $bookValue * $optimisticPbr;
 
         return [
-            'method' => 'PBR 기반',
+            'method' => "PBR 기반 ({$sectorName})",
             'conservative' => round($conservativeValue, 2),
             'fair_value' => round($fairValue, 2),
             'optimistic' => round($optimisticValue, 2),
+            'sector_pbr' => round($sectorPbr, 2),
             'current_pbr' => $currentPrice && $bookValue > 0 ? round($currentPrice / $bookValue, 2) : null,
             'assessment' => $this->assessValue($currentPrice, $fairValue),
         ];

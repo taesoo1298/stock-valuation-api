@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Sector;
+use App\Models\SectorBenchmark;
 use App\Models\Stock;
 use App\Models\StockFundamental;
 use App\Services\ValuationService;
@@ -87,8 +88,50 @@ class StockDashboardController extends Controller
 
         $prices = $stock->prices()
             ->orderBy('date', 'desc')
-            ->limit(60)
+            ->limit(12)
             ->get();
+
+        // 옵션 데이터 (만기일별 요약)
+        $options = $stock->options()
+            ->selectRaw('option_type, expiration_date, COUNT(*) as count, SUM(volume) as total_volume, SUM(open_interest) as total_open_interest')
+            ->groupBy('option_type', 'expiration_date')
+            ->orderBy('expiration_date')
+            ->get();
+
+        // 기관투자자 보유현황
+        $institutionalHolders = $stock->institutionalHolders()
+            ->orderByDesc('shares')
+            ->limit(10)
+            ->get();
+
+        // 내부자 거래
+        $insiderTransactions = $stock->insiderTransactions()
+            ->orderByDesc('transaction_date')
+            ->limit(20)
+            ->get();
+
+        // 실적 예측 (EPS, Revenue)
+        $earningsEstimates = $stock->earningsEstimates()
+            ->orderBy('estimate_type')
+            ->orderBy('period')
+            ->get();
+
+        // 실적 발표 히스토리
+        $earningsHistories = $stock->earningsHistories()
+            ->orderByDesc('earnings_date')
+            ->limit(12)
+            ->get();
+
+        // 애널리스트 평점
+        $analystRating = $stock->analystRating;
+
+        // 섹터 벤치마크
+        $sectorBenchmark = null;
+        if ($stock->sector?->benchmark_etf) {
+            $sectorBenchmark = SectorBenchmark::query()
+                ->where('etf_ticker', $stock->sector->benchmark_etf)
+                ->first();
+        }
 
         $valuation = $this->valuationService->calculateValuation($stock);
 
@@ -99,7 +142,29 @@ class StockDashboardController extends Controller
             'cashflows' => $cashflows,
             'balanceSheets' => $balanceSheets,
             'prices' => $prices,
+            'options' => $options,
+            'institutionalHolders' => $institutionalHolders,
+            'insiderTransactions' => $insiderTransactions,
+            'earningsEstimates' => $earningsEstimates,
+            'earningsHistories' => $earningsHistories,
+            'analystRating' => $analystRating,
+            'sectorBenchmark' => $sectorBenchmark,
             'valuation' => $valuation,
+        ]);
+    }
+
+    public function story(string $ticker): Response
+    {
+        $stock = Stock::query()
+            ->with('sector')
+            ->where('ticker', strtoupper($ticker))
+            ->firstOrFail();
+
+        $analysis = $stock->stockStoryAnalysis;
+
+        return Inertia::render('stocks/story', [
+            'stock' => $stock,
+            'analysis' => $analysis,
         ]);
     }
 
